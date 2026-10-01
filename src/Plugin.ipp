@@ -94,5 +94,12 @@ namespace GOTHIC_NAMESPACE
         // 5. Originale Schadensberechnung der Engine ausfuehren
         // Hier greift die Engine nun auf unser ueberschriebenes Symbol von Schritt 3 zu
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+
+        // 6. ZWINGEND WIEDERHERSTELLEN!
+        // Da Gothic Vanilla immer exakt 5 als Minimalschaden nutzt, setzen wir es hart auf 5 zurueck.
+        // Verhindert zuverlaessig Speicher-Bluten in andere Spielstaende.
+        if (sym) {
+            sym->single_intdata = 5;
+        }
     }
 }
