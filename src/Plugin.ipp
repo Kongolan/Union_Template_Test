@@ -2,280 +2,275 @@
 
 namespace GOTHIC_NAMESPACE
 {
-	// NOTE! Callbacks won't be called by default, you need to uncomment
-	// hooks that will call specific callback
-
-	void Game_EntryPoint()
-	{
-
-	}
-
-	void Game_Init()
-	{
-		// 1. Fallback: Ausgabe direkt auf dem Bildschirm im Spiel (wie "10 Erz erhalten")
-		if (ogame && ogame->GetTextView()) {
-			ogame->GetTextView()->Printwin(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
-		}
-
-		// 2. Fallback: Sehr auffällige Ausgabe im zSpy / Entwickler-Konsole
-		zerr->Message("=========================================================");
-		zerr->Message(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
-		zerr->Message("=========================================================");
-	}
-
-	void Game_Exit()
-	{
-
-	}
-
-	void Game_PreLoop()
-	{
-
-	}
-
-	void Game_Loop()
-	{
-		// static sorgt dafür, dass sich die Variable den Wert über alle Frames hinweg merkt
-        static bool welcomeShown = false; 
-        
-        if (!welcomeShown) {
-            // 1. Text-Ausgabe auf dem Bildschirm (wird jetzt nicht mehr vom Ladebildschirm gelöscht)
-            if (ogame && ogame->GetTextView()) {
-                ogame->GetTextView()->Printwin(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
-            }
-
-            // 2. Garantiert sichtbare zSpy-Ausgabe als Warnung (leuchtet auf)
-            zerr->Warning("=========================================================");
-            zerr->Warning(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
-            zerr->Warning("=========================================================");
+    // ==========================================================
+    // EIGENE LOGGING-FUNKTION (Mit Pointer-Fix für zerr)
+    // ==========================================================
+    void LogDebug(const zSTRING& text) {
+        int debugMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DebugMode", 0);
+        if (debugMode > 0) {
+            // Loggt unsichtbar in die zSpy Konsole
+            zerr->Message("[MinDamage] " + text);
             
-            welcomeShown = true; // Sperrt den Block, damit es nicht jeden Frame gespammt wird
+            // Nutzt die native Gothic-Textausgabe (wie "10 Erz erhalten"), damit es sicher lesbar aufploppt!
+            if (ogame && ogame->GetTextView()) {
+                ogame->GetTextView()->Printwin(text);
+            }
         }
-	}
+    }
 
-	void Game_PostLoop()
-	{
+    // ==========================================================
+    // 1. SCHADENSBERECHNUNG (OnDamage Root Hook)
+    // ==========================================================
+    
+    // Wir deklarieren die Funktion vorab, damit das HOOK-Makro sie kennt
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oSDamageDescriptor& desc);
+    
+    // Da oCNpc::OnDamage überladen ist, nutzen wir einen static_cast, um den 
+    // Pointer auf die exakte Signatur (mit oSDamageDescriptor) zu zwingen.
+    HOOK Hook_Union_MinDamage_OnDamage PATCH( static_cast<void(oCNpc::*)(oSDamageDescriptor&)>(&oCNpc::OnDamage), &Union_MinDamage_OnDamage );
 
-	}
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oSDamageDescriptor& desc) {
+        LogDebug("--- NEUER TREFFER (OnDamage Root) ---");
 
-	void Game_MenuLoop()
-	{
+        // 1. INI-Werte auslesen (Standard: Dynamisch = 1, Wert = 0)
+        int isDynamic    = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DynamicMode", 1);
+        int settingValue = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "MinDamageValue", 0);
+        LogDebug("INI MinDamageValue: " + zSTRING(settingValue));
 
-	}
+        int targetMinDamage = 0;
 
-	void Game_SaveBegin()
-	{
+        // 2. Kristallklare Logik
+        if (isDynamic == 1) {
+            LogDebug("Modus: DYNAMISCH");
+            
+            int bonus = 0;
+            if (desc.pNpcAttacker) {
+                LogDebug("Angreifer (pNpcAttacker) vorhanden.");
+                
+                bool isRanged = (desc.enuModeWeapon == NPC_WEAPON_BOW || desc.enuModeWeapon == NPC_WEAPON_CBOW);
+                if (isRanged) {
+                    LogDebug("Waffentyp: Fernkampf (Bogen/Armbrust).");
+                    bonus = (desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY] / 10) - 1;
+                } else {
+                    LogDebug("Waffentyp: Nahkampf.");
+                    bonus = (desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH] / 10) - 1;
+                }
+                LogDebug("Attribut-Bonus: " + zSTRING(bonus));
+            } else {
+                LogDebug("KEIN Angreifer (nullptr)!");
+            }
+            targetMinDamage = 5 + bonus;
+            if (targetMinDamage < 0) {
+                targetMinDamage = 0;
+                LogDebug("TargetMinDamage < 0, auf 0 korrigiert.");
+            } else {
+                LogDebug("TargetMinDamage (dyn): " + zSTRING(targetMinDamage));
+            }
+        } else {
+            // Fester Wert - greift direkt auf den INI-Wert zu
+            LogDebug("Modus: FEST");
+            targetMinDamage = settingValue;
+            LogDebug("TargetMinDamage (fest): " + zSTRING(targetMinDamage));
+        }
 
-	}
+        LogDebug("Ziel-Schaden: " + zSTRING(targetMinDamage));
 
-	void Game_SaveEnd()
-	{
+        // 3. Daedalus-Symbol ansprechen
+        zCPar_Symbol* sym = parser->GetSymbol("NPC_MINIMAL_DAMAGE");
+        int oldMinDamage = 5;
+        if (sym) {
+            oldMinDamage = sym->single_intdata;
+            LogDebug("Alter NPC_MINIMAL_DAMAGE: " + zSTRING(oldMinDamage));
+            sym->single_intdata = targetMinDamage;
+            LogDebug("UEberschrieben auf: " + zSTRING(targetMinDamage));
+        } else {
+            LogDebug("FEHLER: NPC_MINIMAL_DAMAGE nicht gefunden!");
+        }
 
-	}
+        // 4. Originale Schadensberechnung der Engine ausfuehren
+        LogDebug("Fuehre originalen OnDamage aus...");
+        Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+        LogDebug("Originale Routine beendet.");
 
-	void LoadBegin()
-	{
+        // 5. Symbol sofort wiederherstellen
+        if (sym) {
+            sym->single_intdata = oldMinDamage;
+            LogDebug("NPC_MINIMAL_DAMAGE wiederhergestellt: " + zSTRING(oldMinDamage));
+        }
+        LogDebug("=== Ende OnDamage ===");
+    }
 
-	}
 
-	void LoadEnd()
-	{
+    // ==========================================================
+    // LIFECYCLE CALLBACKS (Aktuell ungenutzt, bleiben leer)
+    // ==========================================================
+    
+    // NOTE! Callbacks won't be called by default, you need to uncomment
+    // hooks that will call specific callback below
 
-	}
+    void Game_EntryPoint() {}
+    void Game_Init() {}
+    void Game_Exit() {}
+    void Game_PreLoop() {}
+    void Game_Loop() {}
+    void Game_PostLoop() {}
+    void Game_MenuLoop() {}
+    void Game_SaveBegin() {}
+    void Game_SaveEnd() {}
+    void LoadBegin() {}
+    void LoadEnd() {}
 
-	void Game_LoadBegin_NewGame()
-	{
-		LoadBegin();
-	}
+    void Game_LoadBegin_NewGame() { LoadBegin(); }
+    void Game_LoadEnd_NewGame() { LoadEnd(); }
+    void Game_LoadBegin_SaveGame() { LoadBegin(); }
+    void Game_LoadEnd_SaveGame() { LoadEnd(); }
+    void Game_LoadBegin_ChangeLevel() { LoadBegin(); }
+    void Game_LoadEnd_ChangeLevel() { LoadEnd(); }
+    
+    void Game_LoadBegin_TriggerChangeLevel() {}
+    void Game_LoadEnd_TriggerChangeLevel() {}
+    void Game_Pause() {}
+    void Game_Unpause() {}
+    void Game_DefineExternals() {}
+    void Game_ApplySettings() {}
 
-	void Game_LoadEnd_NewGame()
-	{
-		LoadEnd();
-	}
+    // ==========================================================
+    // TEMPLATE HOOKS ZUM AKTIVIEREN DER LIFECYCLES
+    // ==========================================================
 
-	void Game_LoadBegin_SaveGame()
-	{
-		LoadBegin();
-	}
+    /*void __fastcall WinMain_EntryPoint(Union::Registers& reg);
+    auto Partial_WinMain = Union::CreatePartialHook(reinterpret_cast<void*>(zSwitch(0x004F3E18, 0x00506816, 0x005000F8, 0x00502D7B)), &WinMain_EntryPoint);
+    void __fastcall WinMain_EntryPoint(Union::Registers& reg)
+    {
+        Game_EntryPoint();
+    }*/
 
-	void Game_LoadEnd_SaveGame()
-	{
-		LoadEnd();
-	}
+    /*void __fastcall oCGame_Init(oCGame* self, void* vtable);
+    auto Hook_oCGame_Init = Union::CreateHook(SIGNATURE_OF(&oCGame::Init), &oCGame_Init, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_Init(oCGame* self, void* vtable)
+    {
+        Hook_oCGame_Init(self, vtable);
+        Game_Init();
+    }*/
 
-	void Game_LoadBegin_ChangeLevel()
-	{
-		LoadBegin();
-	}
+    /*void __fastcall CGameManager_Done(CGameManager* self, void* vtable);
+    auto Hook_CGameManager_Done = Union::CreateHook(SIGNATURE_OF(&CGameManager::Done), &CGameManager_Done, Union::HookType::Hook_Detours);
+    void __fastcall CGameManager_Done(CGameManager* self, void* vtable)
+    {
+        Game_Exit();
+        Hook_CGameManager_Done(self, vtable);
+    }*/
 
-	void Game_LoadEnd_ChangeLevel()
-	{
-		LoadEnd();
-	}
+    /*void __fastcall oCGame_Render(oCGame* self, void* vtable);
+    auto Hook_oCGame_Render = Union::CreateHook(SIGNATURE_OF(&oCGame::Render), &oCGame_Render, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_Render(oCGame* self, void* vtable)
+    {
+        Game_PreLoop();
+        Hook_oCGame_Render(self, vtable);
+        Game_PostLoop();
+    }*/
 
-	void Game_LoadBegin_TriggerChangeLevel()
-	{
+    /*void __fastcall oCGame_MainWorld_Render(Union::Registers& reg);
+    auto Partial_zCWorld_Render = Union::CreatePartialHook(reinterpret_cast<void*>(zSwitch(0x0063DC76, 0x0066498B, 0x0066BA76, 0x006C87EB)), &oCGame_MainWorld_Render);
+    void __fastcall oCGame_MainWorld_Render(Union::Registers& reg)
+    {
+        Game_Loop();
+    }*/
 
-	}
+    /*void __fastcall zCMenu_Render(zCMenu* self, void* vtable);
+    auto Hook_zCMenu_Render = Union::CreateHook(SIGNATURE_OF(&zCMenu::Render), &zCMenu_Render, Union::HookType::Hook_Detours);
+    void __fastcall zCMenu_Render(zCMenu* self, void* vtable)
+    {
+        Hook_zCMenu_Render(self, vtable);
+        Game_MenuLoop();
+    }*/
 
-	void Game_LoadEnd_TriggerChangeLevel()
-	{
+    /*void __fastcall oCGame_WriteSaveGame(oCGame* self, void* vtable, int slot, zBOOL saveGlobals);
+    auto Hook_oCGame_WriteSaveGame = Union::CreateHook(SIGNATURE_OF(&oCGame::WriteSavegame), &oCGame_WriteSaveGame, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_WriteSaveGame(oCGame* self, void* vtable, int slot, zBOOL saveGlobals)
+    {
+        Game_SaveBegin();
+        Hook_oCGame_WriteSaveGame(self, vtable, slot, saveGlobals);
+        Game_SaveEnd();
+    }*/
 
-	}
+    /*void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath);
+    auto Hook_oCGame_LoadGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadGame), &oCGame_LoadGame, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath)
+    {
+        Game_LoadBegin_NewGame();
+        Hook_oCGame_LoadGame(self, vtable, slot, levelPath);
+        Game_LoadEnd_NewGame();
+    }*/
 
-	void Game_Pause()
-	{
+    /*void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals);
+    auto Hook_oCGame_LoadSaveGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadSavegame), &oCGame_LoadSaveGame, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals)
+    {
+        Game_LoadBegin_SaveGame();
+        Hook_oCGame_LoadSaveGame(self, vtable, slot, loadGlobals);
+        Game_LoadEnd_SaveGame();
+    }*/
 
-	}
+    /*void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint);
+    auto Hook_oCGame_ChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::ChangeLevel), &oCGame_ChangeLevel, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
+    {
+        Game_LoadBegin_ChangeLevel();
+        Hook_oCGame_ChangeLevel(self, vtable, levelpath, startpoint);
+        Game_LoadEnd_ChangeLevel();
+    }*/
 
-	void Game_Unpause()
-	{
-
-	}
-
-	void Game_DefineExternals()
-	{
-
-	}
-
-	void Game_ApplySettings()
-	{
-
-	}
-
-	/*void __fastcall WinMain_EntryPoint(Union::Registers& reg);
-	auto Partial_WinMain = Union::CreatePartialHook(reinterpret_cast<void*>(zSwitch(0x004F3E18, 0x00506816, 0x005000F8, 0x00502D7B)), &WinMain_EntryPoint);
-	void __fastcall WinMain_EntryPoint(Union::Registers& reg)
-	{
-		Game_EntryPoint();
-	}*/
-
-	void __fastcall oCGame_Init(oCGame* self, void* vtable);
-	auto Hook_oCGame_Init = Union::CreateHook(SIGNATURE_OF(&oCGame::Init), &oCGame_Init, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_Init(oCGame* self, void* vtable)
-	{
-		Hook_oCGame_Init(self, vtable);
-		Game_Init();
-	}
-
-	/*void __fastcall CGameManager_Done(CGameManager* self, void* vtable);
-	auto Hook_CGameManager_Done = Union::CreateHook(SIGNATURE_OF(&CGameManager::Done), &CGameManager_Done, Union::HookType::Hook_Detours);
-	void __fastcall CGameManager_Done(CGameManager* self, void* vtable)
-	{
-		Game_Exit();
-		Hook_CGameManager_Done(self, vtable);
-	}*/
-
-	/*void __fastcall oCGame_Render(oCGame* self, void* vtable);
-	auto Hook_oCGame_Render = Union::CreateHook(SIGNATURE_OF(&oCGame::Render), &oCGame_Render, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_Render(oCGame* self, void* vtable)
-	{
-		Game_PreLoop();
-		Hook_oCGame_Render(self, vtable);
-		Game_PostLoop();
-	}*/
-
-	void __fastcall oCGame_MainWorld_Render(Union::Registers& reg);
-	auto Partial_zCWorld_Render = Union::CreatePartialHook(reinterpret_cast<void*>(zSwitch(0x0063DC76, 0x0066498B, 0x0066BA76, 0x006C87EB)), &oCGame_MainWorld_Render);
-	void __fastcall oCGame_MainWorld_Render(Union::Registers& reg)
-	{
-		Game_Loop();
-	}
-
-	/*void __fastcall zCMenu_Render(zCMenu* self, void* vtable);
-	auto Hook_zCMenu_Render = Union::CreateHook(SIGNATURE_OF(&zCMenu::Render), &zCMenu_Render, Union::HookType::Hook_Detours);
-	void __fastcall zCMenu_Render(zCMenu* self, void* vtable)
-	{
-		Hook_zCMenu_Render(self, vtable);
-		Game_MenuLoop();
-	}*/
-
-	/*void __fastcall oCGame_WriteSaveGame(oCGame* self, void* vtable, int slot, zBOOL saveGlobals);
-	auto Hook_oCGame_WriteSaveGame = Union::CreateHook(SIGNATURE_OF(&oCGame::WriteSavegame), &oCGame_WriteSaveGame, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_WriteSaveGame(oCGame* self, void* vtable, int slot, zBOOL saveGlobals)
-	{
-		Game_SaveBegin();
-		Hook_oCGame_WriteSaveGame(self, vtable, slot, saveGlobals);
-		Game_SaveEnd();
-	}*/
-
-	/*void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath);
-	auto Hook_oCGame_LoadGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadGame), &oCGame_LoadGame, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath)
-	{
-		Game_LoadBegin_NewGame();
-		Hook_oCGame_LoadGame(self, vtable, slot, levelPath);
-		Game_LoadEnd_NewGame();
-	}*/
-
-	/*void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals);
-	auto Hook_oCGame_LoadSaveGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadSavegame), &oCGame_LoadSaveGame, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals)
-	{
-		Game_LoadBegin_SaveGame();
-		Hook_oCGame_LoadSaveGame(self, vtable, slot, loadGlobals);
-		Game_LoadEnd_SaveGame();
-	}*/
-
-	/*void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint);
-	auto Hook_oCGame_ChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::ChangeLevel), &oCGame_ChangeLevel, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
-	{
-		Game_LoadBegin_ChangeLevel();
-		Hook_oCGame_ChangeLevel(self, vtable, levelpath, startpoint);
-		Game_LoadEnd_ChangeLevel();
-	}*/
-
-	/*void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint);
-	auto Hook_oCGame_TriggerChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::TriggerChangeLevel), &oCGame_TriggerChangeLevel, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
-	{
-		Game_LoadBegin_TriggerChangeLevel();
-		Hook_oCGame_TriggerChangeLevel(self, vtable, levelpath, startpoint);
-		Game_LoadEnd_TriggerChangeLevel();
-	}*/
+    /*void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint);
+    auto Hook_oCGame_TriggerChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::TriggerChangeLevel), &oCGame_TriggerChangeLevel, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
+    {
+        Game_LoadBegin_TriggerChangeLevel();
+        Hook_oCGame_TriggerChangeLevel(self, vtable, levelpath, startpoint);
+        Game_LoadEnd_TriggerChangeLevel();
+    }*/
 
 /*#if ENGINE <= Engine_G1A
-	void __fastcall oCGame_Pause(oCGame* self, void* vtable);
+    void __fastcall oCGame_Pause(oCGame* self, void* vtable);
 #else
-	void __fastcall oCGame_Pause(oCGame* self, void* vtable, zBOOL sessionPaused);
+    void __fastcall oCGame_Pause(oCGame* self, void* vtable, zBOOL sessionPaused);
 #endif
-	auto Hook_oCGame_Pause = Union::CreateHook(SIGNATURE_OF(&oCGame::Pause), &oCGame_Pause, Union::HookType::Hook_Detours);
+    auto Hook_oCGame_Pause = Union::CreateHook(SIGNATURE_OF(&oCGame::Pause), &oCGame_Pause, Union::HookType::Hook_Detours);
 #if ENGINE <= Engine_G1A
-	void __fastcall oCGame_Pause(oCGame* self, void* vtable)
+    void __fastcall oCGame_Pause(oCGame* self, void* vtable)
 #else
-	void __fastcall oCGame_Pause(oCGame* self, void* vtable, zBOOL sessionPaused)
+    void __fastcall oCGame_Pause(oCGame* self, void* vtable, zBOOL sessionPaused)
 #endif
-	{
+    {
 #if ENGINE <= Engine_G1A
-		Hook_oCGame_Pause(self, vtable);
+        Hook_oCGame_Pause(self, vtable);
 #else
-		Hook_oCGame_Pause(self, vtable, sessionPaused);
+        Hook_oCGame_Pause(self, vtable, sessionPaused);
 #endif
-		Game_Pause();
-	}*/
+        Game_Pause();
+    }*/
 
-	/*void __fastcall oCGame_Unpause(oCGame* self, void* vtable);
-	auto Hook_oCGame_Unpause = Union::CreateHook(SIGNATURE_OF(&oCGame::Unpause), &oCGame_Unpause, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_Unpause(oCGame* self, void* vtable)
-	{
-		Hook_oCGame_Unpause(self, vtable);
-		Game_Unpause();
-	}*/
+    /*void __fastcall oCGame_Unpause(oCGame* self, void* vtable);
+    auto Hook_oCGame_Unpause = Union::CreateHook(SIGNATURE_OF(&oCGame::Unpause), &oCGame_Unpause, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_Unpause(oCGame* self, void* vtable)
+    {
+        Hook_oCGame_Unpause(self, vtable);
+        Game_Unpause();
+    }*/
 
-	/*void __fastcall oCGame_DefineExternals_Ulfi(oCGame* self, void* vtable, zCParser* parser);
-	auto Hook_oCGame_DefineExternals_Ulfi = Union::CreateHook(SIGNATURE_OF(&oCGame::DefineExternals_Ulfi), &oCGame_DefineExternals_Ulfi, Union::HookType::Hook_Detours);
-	void __fastcall oCGame_DefineExternals_Ulfi(oCGame* self, void* vtable, zCParser* parser)
-	{
-		Hook_oCGame_DefineExternals_Ulfi(self, vtable, parser);
-		Game_DefineExternals();
-	}*/
+    /*void __fastcall oCGame_DefineExternals_Ulfi(oCGame* self, void* vtable, zCParser* parser);
+    auto Hook_oCGame_DefineExternals_Ulfi = Union::CreateHook(SIGNATURE_OF(&oCGame::DefineExternals_Ulfi), &oCGame_DefineExternals_Ulfi, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_DefineExternals_Ulfi(oCGame* self, void* vtable, zCParser* parser)
+    {
+        Hook_oCGame_DefineExternals_Ulfi(self, vtable, parser);
+        Game_DefineExternals();
+    }*/
 
-	/*void __fastcall CGameManager_ApplySomeSettings(CGameManager* self, void* vtable);
-	auto Hook_CGameManager_ApplySomeSettings = Union::CreateHook(SIGNATURE_OF(&CGameManager::ApplySomeSettings), &CGameManager_ApplySomeSettings, Union::HookType::Hook_Detours);
-	void __fastcall CGameManager_ApplySomeSettings(CGameManager* self, void* vtable)
-	{
-		Hook_CGameManager_ApplySomeSettings(self, vtable);
-		Game_ApplySettings();
-	}*/
+    /*void __fastcall CGameManager_ApplySomeSettings(CGameManager* self, void* vtable);
+    auto Hook_CGameManager_ApplySomeSettings = Union::CreateHook(SIGNATURE_OF(&CGameManager::ApplySomeSettings), &CGameManager_ApplySomeSettings, Union::HookType::Hook_Detours);
+    void __fastcall CGameManager_ApplySomeSettings(CGameManager* self, void* vtable)
+    {
+        Hook_CGameManager_ApplySomeSettings(self, vtable);
+        Game_ApplySettings();
+    }*/
 }
