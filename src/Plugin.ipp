@@ -37,15 +37,24 @@ namespace GOTHIC_NAMESPACE
         // 2. Logik & Berechnung
         if (isDynamic == 1) {
             int bonus = 0;
+            
+            // Pruefen, ob es ueberhaupt einen Angreifer gibt (Koennte auch Fallschaden etc. sein)
             if (desc.pNpcAttacker) {
                 attackerName = desc.pNpcAttacker->name[0];
-                bool isRanged = (desc.enuModeWeapon == NPC_WEAPON_BOW || desc.enuModeWeapon == NPC_WEAPON_CBOW);
+                
+                // FIX: 'desc.enuModeWeapon' ist bei Projektilen oft leer/unzuverlaessig.
+                // Wir fragen stattdessen direkt den "Fight-Mode" (fmode) des Angreifers ab. 
+                // Zieht er gerade einen Bogen oder eine Armbrust, ist es sicher ein Fernkampftreffer.
+                int weaponMode = desc.pNpcAttacker->fmode;
+                bool isRanged = (weaponMode == NPC_WEAPON_BOW || weaponMode == NPC_WEAPON_CBOW);
                 
                 if (isRanged) {
+                    // Fernkampf: Skaliert mit Geschicklichkeit (DEX)
                     int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
                     bonus = (dex / 10) - 1;
                     calcDetails = "Fernkampf (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
                 } else {
+                    // Nahkampf (oder Magie/Faeuste): Skaliert mit Staerke (STR)
                     int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
                     bonus = (str / 10) - 1;
                     calcDetails = "Nahkampf (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
@@ -54,6 +63,7 @@ namespace GOTHIC_NAMESPACE
                 calcDetails = "Kein Angreifer (Basiswert)";
             }
             
+            // Minimalschaden zusammensetzen und sicherstellen, dass er nicht negativ wird
             targetMinDamage = 5 + bonus;
             if (targetMinDamage < 0) {
                 targetMinDamage = 0;
@@ -61,11 +71,13 @@ namespace GOTHIC_NAMESPACE
             }
             
         } else {
+            // Modus ist nicht dynamisch -> Wir nutzen den fixen Wert aus der INI
             calcDetails = "Festwert (INI)";
             targetMinDamage = settingValue;
         }
 
         // 3. Daedalus-Symbol ueberschreiben
+        // Die Engine nutzt diesen Wert im naechsten Moment fuer die interne Berechnung
         zCPar_Symbol* sym = parser->GetSymbol("NPC_MINIMAL_DAMAGE");
         if (sym) {
             sym->single_intdata = targetMinDamage;
@@ -80,6 +92,7 @@ namespace GOTHIC_NAMESPACE
         }
 
         // 5. Originale Schadensberechnung der Engine ausfuehren
+        // Hier greift die Engine nun auf unser ueberschriebenes Symbol von Schritt 3 zu
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
     }
 }
