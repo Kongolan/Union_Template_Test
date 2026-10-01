@@ -74,7 +74,7 @@ namespace GOTHIC_NAMESPACE
         // 4. Transparente Ausgabe der Berechnungswege auf dem Bildschirm (nur im DebugMode)
         int debugMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DebugMode", 0);
         if (debugMode > 0 && ogame && ogame->GetTextView()) {
-            zSTRING targetName = _this ? _this->name[0] : "Unbekannt";
+            zSTRING targetName = _this ? _this->name[0] : zSTRING("Unbekannt");
             zSTRING screenMsg = "[MinDamage] " + attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage);
             ogame->GetTextView()->Printwin(screenMsg);
         }
