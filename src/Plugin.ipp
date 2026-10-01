@@ -12,7 +12,15 @@ namespace GOTHIC_NAMESPACE
 
 	void Game_Init()
 	{
+		// 1. Fallback: Ausgabe direkt auf dem Bildschirm im Spiel (wie "10 Erz erhalten")
+		if (ogame && ogame->GetTextView()) {
+			ogame->GetTextView()->Printwin(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
+		}
 
+		// 2. Fallback: Sehr auffällige Ausgabe im zSpy / Entwickler-Konsole
+		zerr->Message("=========================================================");
+		zerr->Message(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
+		zerr->Message("=========================================================");
 	}
 
 	void Game_Exit()

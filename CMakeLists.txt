@@ -3,14 +3,14 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
-set(PROJECT_VERSION "1.0.0.0" CACHE STRING "Project version")
+set(PROJECT_VERSION "0.1.0.0" CACHE STRING "Project version")
 
 include(target_add_versioninfo)
 include(generate_ipp_translation_units)
 include(configure_msvc_wine_intellisense)
 
-project(UnionPlugin
-	DESCRIPTION "Union plugin for Gothic Games"
+project(Union_MinimumDamage
+	DESCRIPTION "Adjust the minimum damage dynamically or fixed"
 	VERSION ${PROJECT_VERSION}
 )
 
