@@ -65,10 +65,7 @@ namespace GOTHIC_NAMESPACE
             
             // Minimalschaden zusammensetzen und sicherstellen, dass er nicht negativ wird
             targetMinDamage = 5 + bonus;
-            if (targetMinDamage < 0) {
-                targetMinDamage = 0;
-                calcDetails += " (korrigiert auf 0)";
-            }
+            if (targetMinDamage < 0) targetMinDamage = 0;
             
         } else {
             // Modus ist nicht dynamisch -> Wir nutzen den fixen Wert aus der INI
@@ -76,23 +73,28 @@ namespace GOTHIC_NAMESPACE
             targetMinDamage = settingValue;
         }
 
-        // 3. Daedalus-Symbol ueberschreiben
-        // Die Engine nutzt diesen Wert im naechsten Moment fuer die interne Berechnung
-        zCPar_Symbol* sym = parser->GetSymbol("NPC_MINIMAL_DAMAGE");
-        if (sym) {
-            sym->single_intdata = targetMinDamage;
+        // 3. DER GOTHIC-PIPELINE-HACK: 
+        // Wir fassen das Daedalus-Symbol nicht mehr an!
+        // Die Engine hat den Vanilla-Schaden zu diesem Zeitpunkt schon berechnet.
+        // Wir lesen das Endergebnis aus und ueberschreiben es direkt im Speicher.
+        unsigned long actualDamage = desc.nDamageTotal;
+        
+        if (actualDamage < (unsigned long)targetMinDamage) {
+            desc.nDamageTotal = targetMinDamage;
+            calcDetails += " | Ueberschrieben: " + zSTRING((int)actualDamage) + " -> " + zSTRING(targetMinDamage);
+        } else {
+            calcDetails += " | Ignoriert (Regulaerer Schaden " + zSTRING((int)actualDamage) + " ist hoeher)";
         }
 
-        // 4. Transparente Ausgabe der Berechnungswege auf dem Bildschirm (nur im DebugMode)
+        // 4. Transparente Ausgabe auf dem Bildschirm
         int debugMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DebugMode", 0);
         if (debugMode > 0 && ogame && ogame->GetTextView()) {
             zSTRING targetName = _this ? _this->name[0] : zSTRING("Unbekannt");
-            zSTRING screenMsg = "[MinDamage] " + attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage);
+            zSTRING screenMsg = "[MinDamage] " + attackerName + " -> " + targetName + " | " + calcDetails;
             ogame->GetTextView()->Printwin(screenMsg);
         }
 
-        // 5. Originale Schadensberechnung der Engine ausfuehren
-        // Hier greift die Engine nun auf unser ueberschriebenes Symbol von Schritt 3 zu
+        // 5. Originale Funktion ausfuehren (zieht nun exakt unseren ueberschriebenen desc.nDamageTotal vom Leben ab)
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
 
         // 6. ZWINGEND WIEDERHERSTELLEN!
