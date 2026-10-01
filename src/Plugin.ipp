@@ -3,7 +3,7 @@
 namespace GOTHIC_NAMESPACE
 {
     // ==========================================================
-    // EIGENE LOGGING-FUNKTION (Mit Pointer-Fix für zerr)
+    // EIGENE LOGGING-FUNKTION
     // ==========================================================
     void LogDebug(const zSTRING& text) {
         int debugMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DebugMode", 0);
@@ -11,7 +11,7 @@ namespace GOTHIC_NAMESPACE
             // Loggt unsichtbar in die zSpy Konsole
             zerr->Message("[MinDamage] " + text);
             
-            // Nutzt die native Gothic-Textausgabe (wie "10 Erz erhalten"), damit es sicher lesbar aufploppt!
+            // Nutzt die native Gothic-Textausgabe
             if (ogame && ogame->GetTextView()) {
                 ogame->GetTextView()->Printwin(text);
             }
@@ -22,14 +22,18 @@ namespace GOTHIC_NAMESPACE
     // 1. SCHADENSBERECHNUNG (OnDamage Root Hook)
     // ==========================================================
     
-    // Wir deklarieren die Funktion vorab, damit das HOOK-Makro sie kennt
-    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oSDamageDescriptor& desc);
+    // Wir deklarieren die Funktion vorab
+    // WICHTIG: Die Struktur heißt oCNpc::oSDamageDescriptor
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
     
-    // Da oCNpc::OnDamage überladen ist, nutzen wir einen static_cast, um den 
-    // Pointer auf die exakte Signatur (mit oSDamageDescriptor) zu zwingen.
-    HOOK Hook_Union_MinDamage_OnDamage PATCH( static_cast<void(oCNpc::*)(oSDamageDescriptor&)>(&oCNpc::OnDamage), &Union_MinDamage_OnDamage );
+    // Hook-Erstellung (Neue Union Template Syntax, ersetzt das alte HOOK-Makro)
+    auto Hook_Union_MinDamage_OnDamage = Union::CreateHook(
+        static_cast<void(oCNpc::*)(oCNpc::oSDamageDescriptor&)>(&oCNpc::OnDamage), 
+        &Union_MinDamage_OnDamage, 
+        Union::HookType::Hook_Detours
+    );
 
-    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oSDamageDescriptor& desc) {
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
         LogDebug("--- NEUER TREFFER (OnDamage Root) ---");
 
         // 1. INI-Werte auslesen (Standard: Dynamisch = 1, Wert = 0)
@@ -82,7 +86,7 @@ namespace GOTHIC_NAMESPACE
             oldMinDamage = sym->single_intdata;
             LogDebug("Alter NPC_MINIMAL_DAMAGE: " + zSTRING(oldMinDamage));
             sym->single_intdata = targetMinDamage;
-            LogDebug("UEberschrieben auf: " + zSTRING(targetMinDamage));
+            LogDebug("Ueberschrieben auf: " + zSTRING(targetMinDamage));
         } else {
             LogDebug("FEHLER: NPC_MINIMAL_DAMAGE nicht gefunden!");
         }
