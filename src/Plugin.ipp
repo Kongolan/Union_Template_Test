@@ -22,13 +22,16 @@ namespace GOTHIC_NAMESPACE
     // 1. SCHADENSBERECHNUNG (OnDamage Root Hook)
     // ==========================================================
     
-    // Wir deklarieren die Funktion vorab
-    // WICHTIG: Die Struktur heißt oCNpc::oSDamageDescriptor
+    // Wir definieren den genauen Typ der OnDamage-Funktion, die wir hooken wollen.
+    // Das ist noetig, weil oCNpc::OnDamage in der Engine mehrfach existiert (ueberladen ist).
+    using TOnDamage = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
+    
+    // Wir deklarieren unsere eigene Funktion vorab
     void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
     
-    // Hook-Erstellung (Neue Union Template Syntax, ersetzt das alte HOOK-Makro)
+    // Hook-Erstellung: Jetzt sieht es genauso uebersichtlich aus wie die Template-Hooks!
     auto Hook_Union_MinDamage_OnDamage = Union::CreateHook(
-        static_cast<void(oCNpc::*)(oCNpc::oSDamageDescriptor&)>(&oCNpc::OnDamage), 
+        SIGNATURE_OF( static_cast<TOnDamage>(&oCNpc::OnDamage) ), 
         &Union_MinDamage_OnDamage, 
         Union::HookType::Hook_Detours
     );
@@ -103,7 +106,6 @@ namespace GOTHIC_NAMESPACE
         }
         LogDebug("=== Ende OnDamage ===");
     }
-
 
     // ==========================================================
     // LIFECYCLE CALLBACKS (Aktuell ungenutzt, bleiben leer)
