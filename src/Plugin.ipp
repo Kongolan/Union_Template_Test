@@ -42,9 +42,7 @@ namespace GOTHIC_NAMESPACE
             if (desc.pNpcAttacker) {
                 attackerName = desc.pNpcAttacker->name[0];
                 
-                // FIX: 'desc.enuModeWeapon' ist bei Projektilen oft leer/unzuverlaessig.
-                // Wir fragen stattdessen direkt den "Fight-Mode" (fmode) des Angreifers ab. 
-                // Zieht er gerade einen Bogen oder eine Armbrust, ist es sicher ein Fernkampftreffer.
+                // Wir fragen direkt den "Fight-Mode" (fmode) des Angreifers ab. 
                 int weaponMode = desc.pNpcAttacker->fmode;
                 bool isRanged = (weaponMode == NPC_WEAPON_BOW || weaponMode == NPC_WEAPON_CBOW);
                 
@@ -75,12 +73,11 @@ namespace GOTHIC_NAMESPACE
 
         // 3. DER GOTHIC-PIPELINE-HACK: 
         // Wir fassen das Daedalus-Symbol nicht mehr an!
-        // Die Engine hat den Vanilla-Schaden zu diesem Zeitpunkt schon berechnet.
-        // Wir lesen das Endergebnis aus und ueberschreiben es direkt im Speicher.
-        unsigned long actualDamage = desc.dwDamageTotal;
+        // In der Zengin C++ Engine ist der Gesamtschaden eine Kommazahl (float).
+        float actualDamage = desc.fDamageTotal;
         
-        if (actualDamage < (unsigned long)targetMinDamage) {
-            desc.dwDamageTotal = targetMinDamage;
+        if (actualDamage < (float)targetMinDamage) {
+            desc.fDamageTotal = (float)targetMinDamage;
             calcDetails += " | Ueberschrieben: " + zSTRING((int)actualDamage) + " -> " + zSTRING(targetMinDamage);
         } else {
             calcDetails += " | Ignoriert (Regulaerer Schaden " + zSTRING((int)actualDamage) + " ist hoeher)";
@@ -94,7 +91,7 @@ namespace GOTHIC_NAMESPACE
             ogame->GetTextView()->Printwin(screenMsg);
         }
 
-        // 5. Originale Funktion ausfuehren (zieht nun exakt unseren ueberschriebenen desc.dwDamageTotal vom Leben ab)
+        // 5. Originale Funktion ausfuehren (zieht nun exakt unseren ueberschriebenen fDamageTotal vom Leben ab)
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
     }
 }
