@@ -135,13 +135,13 @@ namespace GOTHIC_NAMESPACE
 		Game_EntryPoint();
 	}*/
 
-	/*void __fastcall oCGame_Init(oCGame* self, void* vtable);
+	void __fastcall oCGame_Init(oCGame* self, void* vtable);
 	auto Hook_oCGame_Init = Union::CreateHook(SIGNATURE_OF(&oCGame::Init), &oCGame_Init, Union::HookType::Hook_Detours);
 	void __fastcall oCGame_Init(oCGame* self, void* vtable)
 	{
 		Hook_oCGame_Init(self, vtable);
 		Game_Init();
-	}*/
+	}
 
 	/*void __fastcall CGameManager_Done(CGameManager* self, void* vtable);
 	auto Hook_CGameManager_Done = Union::CreateHook(SIGNATURE_OF(&CGameManager::Done), &CGameManager_Done, Union::HookType::Hook_Detours);
