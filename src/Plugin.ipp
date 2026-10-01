@@ -77,10 +77,10 @@ namespace GOTHIC_NAMESPACE
         // Wir fassen das Daedalus-Symbol nicht mehr an!
         // Die Engine hat den Vanilla-Schaden zu diesem Zeitpunkt schon berechnet.
         // Wir lesen das Endergebnis aus und ueberschreiben es direkt im Speicher.
-        unsigned long actualDamage = desc.nDamageTotal;
+        unsigned long actualDamage = desc.dwDamageTotal;
         
         if (actualDamage < (unsigned long)targetMinDamage) {
-            desc.nDamageTotal = targetMinDamage;
+            desc.dwDamageTotal = targetMinDamage;
             calcDetails += " | Ueberschrieben: " + zSTRING((int)actualDamage) + " -> " + zSTRING(targetMinDamage);
         } else {
             calcDetails += " | Ignoriert (Regulaerer Schaden " + zSTRING((int)actualDamage) + " ist hoeher)";
@@ -94,14 +94,7 @@ namespace GOTHIC_NAMESPACE
             ogame->GetTextView()->Printwin(screenMsg);
         }
 
-        // 5. Originale Funktion ausfuehren (zieht nun exakt unseren ueberschriebenen desc.nDamageTotal vom Leben ab)
+        // 5. Originale Funktion ausfuehren (zieht nun exakt unseren ueberschriebenen desc.dwDamageTotal vom Leben ab)
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
-
-        // 6. ZWINGEND WIEDERHERSTELLEN!
-        // Da Gothic Vanilla immer exakt 5 als Minimalschaden nutzt, setzen wir es hart auf 5 zurueck.
-        // Verhindert zuverlaessig Speicher-Bluten in andere Spielstaende.
-        if (sym) {
-            sym->single_intdata = 5;
-        }
     }
 }
