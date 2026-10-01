@@ -35,7 +35,22 @@ namespace GOTHIC_NAMESPACE
 
 	void Game_Loop()
 	{
+		// static sorgt dafür, dass sich die Variable den Wert über alle Frames hinweg merkt
+        static bool welcomeShown = false; 
+        
+        if (!welcomeShown) {
+            // 1. Text-Ausgabe auf dem Bildschirm (wird jetzt nicht mehr vom Ladebildschirm gelöscht)
+            if (ogame && ogame->GetTextView()) {
+                ogame->GetTextView()->Printwin(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
+            }
 
+            // 2. Garantiert sichtbare zSpy-Ausgabe als Warnung (leuchtet auf)
+            zerr->Warning("=========================================================");
+            zerr->Warning(">>> HELLO WORLD: Union_MinimalDamage ERFOLGREICH GELADEN! <<<");
+            zerr->Warning("=========================================================");
+            
+            welcomeShown = true; // Sperrt den Block, damit es nicht jeden Frame gespammt wird
+        }
 	}
 
 	void Game_PostLoop()
@@ -160,12 +175,12 @@ namespace GOTHIC_NAMESPACE
 		Game_PostLoop();
 	}*/
 
-	/*void __fastcall oCGame_MainWorld_Render(Union::Registers& reg);
+	void __fastcall oCGame_MainWorld_Render(Union::Registers& reg);
 	auto Partial_zCWorld_Render = Union::CreatePartialHook(reinterpret_cast<void*>(zSwitch(0x0063DC76, 0x0066498B, 0x0066BA76, 0x006C87EB)), &oCGame_MainWorld_Render);
 	void __fastcall oCGame_MainWorld_Render(Union::Registers& reg)
 	{
 		Game_Loop();
-	}*/
+	}
 
 	/*void __fastcall zCMenu_Render(zCMenu* self, void* vtable);
 	auto Hook_zCMenu_Render = Union::CreateHook(SIGNATURE_OF(&zCMenu::Render), &zCMenu_Render, Union::HookType::Hook_Detours);
