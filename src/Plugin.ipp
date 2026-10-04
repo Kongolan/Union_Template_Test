@@ -16,8 +16,6 @@ namespace GOTHIC_NAMESPACE
     // 1. SCHADENSBERECHNUNG (OnDamage_Hit Hook)
     // ==========================================================
     
-    // FIX: Wir hooken nicht OnDamage, sondern OnDamage_Hit. 
-    // Hier findet die tatsaechliche Ruestungsberechnung statt und das Daedalus-Symbol wird abgefragt!
     using TOnDamage_Hit = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
     void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
     
@@ -34,7 +32,7 @@ namespace GOTHIC_NAMESPACE
         
         int targetMinDamage = 5; // Standard-Fallback
         zSTRING attackerName = "Niemand";
-        zSTRING calcDetails = ""; 
+        zSTRING calcDetails = ""; // Speichert die Rechenschritte fuer das On-Screen Debugging
 
         // Logik & Berechnung unseres dynamischen Min-Schadens
         if (isDynamic == 1) {
@@ -42,30 +40,25 @@ namespace GOTHIC_NAMESPACE
             
             if (desc.pNpcAttacker) {
                 attackerName = desc.pNpcAttacker->name[0];
-                bool isRanged = false;
                 
-                // Patrix-Fix: Prüfen der Waffe (verhindert den Weapon-Swap-Exploit)
-                // ITM_CAT_FF = Fernkampfwaffe (Bogen/Armbrust), ITM_CAT_MUN = Munition (Pfeil/Bolzen)
-                if (desc.pItemWeapon) {
-                    isRanged = (desc.pItemWeapon->mainflag & ITM_CAT_FF) != 0 || (desc.pItemWeapon->mainflag & ITM_CAT_MUN) != 0;
-                } 
-                
-                // Fallback, falls Waffe nicht eindeutig ist
-                if (!isRanged) {
-                    // FIX: In C++ ist der Fernkampf-Modus (FMODE_FAR) die 3!
-                    isRanged = (desc.pNpcAttacker->fmode == 3);
-                }
-                
-                if (isRanged) {
-                    // Fernkampf: Skaliert mit Geschicklichkeit (DEX)
+                // Direkte Auswertung der Waffe und sofortige Bonus-Berechnung ohne Zwischen-Flags
+                if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_FF)) {
+                    // Zweig 1: Eindeutige Fernkampfwaffe (Bogen/Armbrust)
                     int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
                     bonus = (dex / 10) - 1;
-                    calcDetails = "Fernkampf (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
-                } else {
-                    // Nahkampf (oder Magie/Faeuste): Skaliert mit Staerke (STR)
+                    calcDetails = "Fernkampf Waffe (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
+                    
+                } else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
+                    // Zweig 2: Eindeutige Nahkampfwaffe (Schwert/Axt/etc)
                     int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
                     bonus = (str / 10) - 1;
-                    calcDetails = "Nahkampf (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
+                    calcDetails = "Nahkampf Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
+                    
+                } else {
+                    // Zweig 3: Fallback (Monsterangriffe, Faeuste, Magie oder unerkannte Waffen)
+                    int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
+                    bonus = (str / 10) - 1;
+                    calcDetails = "Monster/Ohne Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
                 }
             } else {
                 calcDetails = "Kein Angreifer (Basiswert 5)";
@@ -83,20 +76,16 @@ namespace GOTHIC_NAMESPACE
             targetMinDamage = settingValue;
         }
 
-        // 2. DAEDALUS SYMBOL SETZEN (Direkt vor der Berechnung)
+        // 2. DAEDALUS SYMBOL SETZEN
         zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
         if (sym) {
             sym->single_intdata = targetMinDamage;
         }
 
         // 3. ORIGINALE BERECHNUNG AUSFUEHREN
-        // Da wir OnDamage_Hit gehookt haben, liest die Engine nun exakt hier unser Symbol 
-        // und nutzt es als Floor (Minimum), falls der Schaden an der Ruestung scheitert.
         Hook_Union_MinDamage_OnDamage_Hit(_this, vtable, desc);
 
         // 4. SOFORTIGE BEREINIGUNG
-        // Wir setzen das Symbol im selben Frame sofort wieder auf 5 zurueck.
-        // Dadurch blutet nichts in den naechsten Schlag und nichts ins Savegame!
         if (sym) {
             sym->single_intdata = 5;
         }
