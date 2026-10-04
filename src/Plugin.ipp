@@ -13,19 +13,20 @@ namespace GOTHIC_NAMESPACE
     }
 
     // ==========================================================
-    // 1. SCHADENSBERECHNUNG (OnDamage_Hit Hook)
+    // 1. SCHADENSBERECHNUNG (OnDamage Root Hook)
     // ==========================================================
     
-    using TOnDamage_Hit = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
-    void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
+    // ZURUECK ZU ONDAMAGE: Hier liest die Engine das Symbol für die Ruestungsberechnung aus!
+    using TOnDamage = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
     
-    auto Hook_Union_MinDamage_OnDamage_Hit = Union::CreateHook(
-        SIGNATURE_OF( static_cast<TOnDamage_Hit>(&oCNpc::OnDamage_Hit) ), 
-        &Union_MinDamage_OnDamage_Hit, 
+    auto Hook_Union_MinDamage_OnDamage = Union::CreateHook(
+        SIGNATURE_OF( static_cast<TOnDamage>(&oCNpc::OnDamage) ), 
+        &Union_MinDamage_OnDamage, 
         Union::HookType::Hook_Detours
     );
 
-    void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
         // INI-Werte auslesen
         int isDynamic    = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DynamicMode", 1);
         int settingValue = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "MinDamageValue", 0);
@@ -42,7 +43,6 @@ namespace GOTHIC_NAMESPACE
                 attackerName = desc.pNpcAttacker->name[0];
                 
                 // Direkte Auswertung der Waffe und sofortige Bonus-Berechnung
-                // FIX: Ein Pfeil/Bolzen hat das Flag ITM_CAT_MUN (Munition), der Bogen ITM_CAT_FF (Far-Fight).
                 if (desc.pItemWeapon && ((desc.pItemWeapon->mainflag & ITM_CAT_FF) || (desc.pItemWeapon->mainflag & ITM_CAT_MUN))) {
                     // Zweig 1: Eindeutige Fernkampfwaffe ODER abgefeuertes Projektil
                     int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
@@ -77,18 +77,10 @@ namespace GOTHIC_NAMESPACE
             targetMinDamage = settingValue;
         }
 
-        // 2. DAEDALUS SYMBOL SETZEN
+        // 2. DAEDALUS SYMBOL SETZEN (Exakt bevor die Engine die Ruestung abzieht)
         zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
         if (sym) {
             sym->single_intdata = targetMinDamage;
-        }
-
-        // 3. ORIGINALE BERECHNUNG AUSFUEHREN
-        Hook_Union_MinDamage_OnDamage_Hit(_this, vtable, desc);
-
-        // 4. SOFORTIGE BEREINIGUNG
-        if (sym) {
-            sym->single_intdata = 5;
         }
 
         // Debug-Ausgabe auf dem Bildschirm
@@ -97,6 +89,16 @@ namespace GOTHIC_NAMESPACE
             zSTRING targetName = _this ? _this->name[0] : zSTRING("Unbekannt");
             zSTRING screenMsg = "[MinDamage] " + attackerName + " -> " + targetName + " | " + calcDetails + " | Effektiver MinDmg = " + zSTRING(targetMinDamage);
             ogame->GetTextView()->Printwin(screenMsg);
+        }
+
+        // 3. ORIGINALE BERECHNUNG AUSFUEHREN
+        // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
+        Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+
+        // 4. SOFORTIGE BEREINIGUNG (Anti-Bleeding)
+        // Wir erzwingen IMMER eine saubere 5. Egal, was vorher im Savegame stand.
+        if (sym) {
+            sym->single_intdata = 5;
         }
     }
 }
