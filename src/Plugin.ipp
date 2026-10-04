@@ -38,13 +38,23 @@ namespace GOTHIC_NAMESPACE
         if (isDynamic == 1) {
             int bonus = 0;
             
-            // Pruefen, ob es ueberhaupt einen Angreifer gibt (Koennte auch Fallschaden etc. sein)
+            // Pruefen, ob es ueberhaupt einen Angreifer gibt
             if (desc.pNpcAttacker) {
                 attackerName = desc.pNpcAttacker->name[0];
                 
-                // Wir fragen direkt den "Fight-Mode" (fmode) des Angreifers ab. 
-                int weaponMode = desc.pNpcAttacker->fmode;
-                bool isRanged = (weaponMode == NPC_WEAPON_BOW || weaponMode == NPC_WEAPON_CBOW);
+                bool isRanged = false;
+
+                // PATRIX FIX: Wir pruefen direkt die Waffe, die den Schaden verursacht hat!
+                // Verhindert den Weapon-Swap-Exploit (Pfeil fliegen lassen -> Schwert ziehen -> Staerke-Scaling auf Pfeil)
+                if (desc.pItemWeapon) {
+                    // ITM_CAT_FF = Item Category Far-Fight (Fernkampf)
+                    isRanged = (desc.pItemWeapon->mainflag & ITM_CAT_FF) != 0;
+                } else {
+                    // Fallback: Keine Waffe (Krallen, Faeuste). Wir ueberpruefen sicherheitshalber noch den fmode,
+                    // falls es ein magisches Projektil ist, aber in 99% der Faelle ist es Nahkampf.
+                    int weaponMode = desc.pNpcAttacker->fmode;
+                    isRanged = (weaponMode == 5 || weaponMode == 6);
+                }
                 
                 if (isRanged) {
                     // Fernkampf: Skaliert mit Geschicklichkeit (DEX)
@@ -75,10 +85,8 @@ namespace GOTHIC_NAMESPACE
 
         // Daedalus-Symbol anpassen
         zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
-        int previousMinDamage = 5;
 
         if (sym) {
-            previousMinDamage = sym->single_intdata;
             sym->single_intdata = targetMinDamage;
         }
 
@@ -93,9 +101,9 @@ namespace GOTHIC_NAMESPACE
         // Originale Schadensberechnung ausfuehren
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
 
-        // Sofortige Bereinigung
+        // Sofortige Bereinigung fuer den exakt naechsten Schlag
         if (sym) {
-            sym->single_intdata = previousMinDamage;
+            sym->single_intdata = 5;
         }
     }
 
@@ -121,8 +129,8 @@ namespace GOTHIC_NAMESPACE
     auto Hook_oCGame_LoadGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadGame), &oCGame_LoadGame, Union::HookType::Hook_Detours);
     void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath)
     {
-        ResetMinDamageSymbol();
         Hook_oCGame_LoadGame(self, vtable, slot, levelPath);
+        ResetMinDamageSymbol(); 
     }
 
     // Hook: Spielstand laden (Savegame)
@@ -130,8 +138,8 @@ namespace GOTHIC_NAMESPACE
     auto Hook_oCGame_LoadSaveGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadSavegame), &oCGame_LoadSaveGame, Union::HookType::Hook_Detours);
     void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals)
     {
-        ResetMinDamageSymbol();
         Hook_oCGame_LoadSaveGame(self, vtable, slot, loadGlobals);
+        ResetMinDamageSymbol(); 
     }
 
     // Hook: Level wechseln (z.B. von Khorinis ins Minental)
@@ -139,8 +147,8 @@ namespace GOTHIC_NAMESPACE
     auto Hook_oCGame_ChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::ChangeLevel), &oCGame_ChangeLevel, Union::HookType::Hook_Detours);
     void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
     {
-        ResetMinDamageSymbol();
         Hook_oCGame_ChangeLevel(self, vtable, levelpath, startpoint);
+        ResetMinDamageSymbol();
     }
 
     // Hook: Trigger-Level-Change (Teleport/Zonenwechsel)
@@ -148,7 +156,7 @@ namespace GOTHIC_NAMESPACE
     auto Hook_oCGame_TriggerChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::TriggerChangeLevel), &oCGame_TriggerChangeLevel, Union::HookType::Hook_Detours);
     void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
     {
-        ResetMinDamageSymbol();
         Hook_oCGame_TriggerChangeLevel(self, vtable, levelpath, startpoint);
+        ResetMinDamageSymbol();
     }
 }
