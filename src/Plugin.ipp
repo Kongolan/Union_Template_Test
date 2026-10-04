@@ -26,15 +26,15 @@ namespace GOTHIC_NAMESPACE
     );
 
     void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
-        // 1. INI-Werte auslesen
+        // INI-Werte auslesen
         int isDynamic    = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DynamicMode", 1);
         int settingValue = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "MinDamageValue", 0);
         
-        int targetMinDamage = 0;
+        int targetMinDamage = 5; // Standard-Fallback
         zSTRING attackerName = "Niemand";
         zSTRING calcDetails = ""; // Speichert die Rechenschritte fuer das On-Screen Debugging
 
-        // 2. Logik & Berechnung
+        // Logik & Berechnung
         if (isDynamic == 1) {
             int bonus = 0;
             
@@ -58,40 +58,97 @@ namespace GOTHIC_NAMESPACE
                     calcDetails = "Nahkampf (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
                 }
             } else {
-                calcDetails = "Kein Angreifer (Basiswert)";
+                calcDetails = "Kein Angreifer (Basiswert 5)";
             }
             
             // Minimalschaden zusammensetzen und sicherstellen, dass er nicht negativ wird
             targetMinDamage = 5 + bonus;
-            if (targetMinDamage < 0) targetMinDamage = 0;
-            
+            if (targetMinDamage < 0) {
+                targetMinDamage = 0;
+                calcDetails += " (korrigiert auf 0)";
+            }
         } else {
             // Modus ist nicht dynamisch -> Wir nutzen den fixen Wert aus der INI
             calcDetails = "Festwert (INI)";
             targetMinDamage = settingValue;
         }
 
-        // 3. DER GOTHIC-PIPELINE-HACK: 
-        // Wir fassen das Daedalus-Symbol nicht mehr an!
-        // In der Zengin C++ Engine ist der Gesamtschaden eine Kommazahl (float).
-        float actualDamage = desc.fDamageTotal;
-        
-        if (actualDamage < (float)targetMinDamage) {
-            desc.fDamageTotal = (float)targetMinDamage;
-            calcDetails += " | Ueberschrieben: " + zSTRING((int)actualDamage) + " -> " + zSTRING(targetMinDamage);
-        } else {
-            calcDetails += " | Ignoriert (Regulaerer Schaden " + zSTRING((int)actualDamage) + " ist hoeher)";
+        // Daedalus-Symbol anpassen
+        zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
+        int previousMinDamage = 5;
+
+        if (sym) {
+            previousMinDamage = sym->single_intdata;
+            sym->single_intdata = targetMinDamage;
         }
 
-        // 4. Transparente Ausgabe auf dem Bildschirm
+        // Debug-Ausgabe auf dem Bildschirm
         int debugMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DebugMode", 0);
         if (debugMode > 0 && ogame && ogame->GetTextView()) {
             zSTRING targetName = _this ? _this->name[0] : zSTRING("Unbekannt");
-            zSTRING screenMsg = "[MinDamage] " + attackerName + " -> " + targetName + " | " + calcDetails;
+            zSTRING screenMsg = "[MinDamage] " + attackerName + " -> " + targetName + " | " + calcDetails + " | NPC_MINIMAL_DAMAGE = " + zSTRING(targetMinDamage);
             ogame->GetTextView()->Printwin(screenMsg);
         }
 
-        // 5. Originale Funktion ausfuehren (zieht nun exakt unseren ueberschriebenen fDamageTotal vom Leben ab)
+        // Originale Schadensberechnung ausfuehren
         Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+
+        // Sofortige Bereinigung
+        if (sym) {
+            sym->single_intdata = previousMinDamage;
+        }
+    }
+
+    // ==========================================================
+    // 2. SICHERHEITSNETZ GEGEN BLEEDING BEIM LADEN
+    // ==========================================================
+    
+    void ResetMinDamageSymbol() {
+        if (parser) {
+            zCPar_Symbol* sym = parser->GetSymbol("NPC_MINIMAL_DAMAGE");
+            if (sym) {
+                sym->single_intdata = 5;
+            }
+        }
+    }
+
+    // ==========================================================
+    // 3. UNION HOOKS FUER LADE- UND LEVEL-EVENTS
+    // ==========================================================
+
+    // Hook: Neues Spiel laden
+    void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath);
+    auto Hook_oCGame_LoadGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadGame), &oCGame_LoadGame, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_LoadGame(oCGame* self, void* vtable, int slot, const zSTRING& levelPath)
+    {
+        ResetMinDamageSymbol();
+        Hook_oCGame_LoadGame(self, vtable, slot, levelPath);
+    }
+
+    // Hook: Spielstand laden (Savegame)
+    void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals);
+    auto Hook_oCGame_LoadSaveGame = Union::CreateHook(SIGNATURE_OF(&oCGame::LoadSavegame), &oCGame_LoadSaveGame, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_LoadSaveGame(oCGame* self, void* vtable, int slot, zBOOL loadGlobals)
+    {
+        ResetMinDamageSymbol();
+        Hook_oCGame_LoadSaveGame(self, vtable, slot, loadGlobals);
+    }
+
+    // Hook: Level wechseln (z.B. von Khorinis ins Minental)
+    void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint);
+    auto Hook_oCGame_ChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::ChangeLevel), &oCGame_ChangeLevel, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_ChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
+    {
+        ResetMinDamageSymbol();
+        Hook_oCGame_ChangeLevel(self, vtable, levelpath, startpoint);
+    }
+
+    // Hook: Trigger-Level-Change (Teleport/Zonenwechsel)
+    void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint);
+    auto Hook_oCGame_TriggerChangeLevel = Union::CreateHook(SIGNATURE_OF(&oCGame::TriggerChangeLevel), &oCGame_TriggerChangeLevel, Union::HookType::Hook_Detours);
+    void __fastcall oCGame_TriggerChangeLevel(oCGame* self, void* vtable, const zSTRING& levelpath, const zSTRING& startpoint)
+    {
+        ResetMinDamageSymbol();
+        Hook_oCGame_TriggerChangeLevel(self, vtable, levelpath, startpoint);
     }
 }
