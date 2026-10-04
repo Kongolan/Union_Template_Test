@@ -41,9 +41,10 @@ namespace GOTHIC_NAMESPACE
             if (desc.pNpcAttacker) {
                 attackerName = desc.pNpcAttacker->name[0];
                 
-                // Direkte Auswertung der Waffe und sofortige Bonus-Berechnung ohne Zwischen-Flags
-                if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_FF)) {
-                    // Zweig 1: Eindeutige Fernkampfwaffe (Bogen/Armbrust)
+                // Direkte Auswertung der Waffe und sofortige Bonus-Berechnung
+                // FIX: Ein Pfeil/Bolzen hat das Flag ITM_CAT_MUN (Munition), der Bogen ITM_CAT_FF (Far-Fight).
+                if (desc.pItemWeapon && ((desc.pItemWeapon->mainflag & ITM_CAT_FF) || (desc.pItemWeapon->mainflag & ITM_CAT_MUN))) {
+                    // Zweig 1: Eindeutige Fernkampfwaffe ODER abgefeuertes Projektil
                     int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
                     bonus = (dex / 10) - 1;
                     calcDetails = "Fernkampf Waffe (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
