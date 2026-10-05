@@ -46,6 +46,9 @@ namespace GOTHIC_NAMESPACE
             return;
         }
 
+        // 1. Lesen, was noch von vorher im Speicher steht
+        int valBefore = sym->single_intdata;
+
         if (isDynamic != 1) {
             // Modus ist nicht dynamisch -> Wir nutzen den fixen Wert aus der INI
             targetMinDamage = settingValue;
@@ -73,9 +76,6 @@ namespace GOTHIC_NAMESPACE
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
             LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
-            // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
-            Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
-            return;                  
         } else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
             // Zweig 2: Eindeutige Nahkampfwaffe (Schwert/Axt/etc)
             int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
@@ -85,9 +85,6 @@ namespace GOTHIC_NAMESPACE
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
             LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
-            // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
-            Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
-            return;
         } else {
             // Zweig 3: Fallback (Monsterangriffe, Faeuste, Magie oder unerkannte Waffen)
             int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
@@ -97,14 +94,29 @@ namespace GOTHIC_NAMESPACE
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
             LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
-            // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
-            Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
-            return;
         }
 
         // 3. ORIGINALE BERECHNUNG AUSFUEHREN
         // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
-        // Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+
+        // 3. Sofort wieder aus dem Speicher auslesen, um zu pruefen, ob der Schreibvorgang geklappt hat
+        int valAfter = sym->single_intdata;
+        
+        // 4. In die zSpy/Debug-Konsole loggen
+        LogDebug("RAM-CHECK | Vorher: " + zSTRING(valBefore) + 
+                    " | Wir wollten: " + zSTRING(targetMinDamage) + 
+                    " | Jetzt im RAM: " + zSTRING(valAfter));
+
+        Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+
+           // 3. Sofort wieder aus dem Speicher auslesen, um zu pruefen, ob der Schreibvorgang geklappt hat
+        int valAfterAfter = sym->single_intdata;
+        
+        // 4. In die zSpy/Debug-Konsole loggen
+        LogDebug("RAM-CHECK | Vorher: " + zSTRING(valBefore) + 
+                    " | Wir wollten: " + zSTRING(targetMinDamage) + 
+                    " | Jetzt im RAM: " + zSTRING(valAfter) +
+                    " | Jetzt im RAM nach Damage: " + zSTRING(valAfterAfter));
 
         // 4. SOFORTIGE BEREINIGUNG (Anti-Bleeding)
         // Wir erzwingen IMMER eine saubere 5. Egal, was vorher im Savegame stand.
