@@ -73,6 +73,7 @@ namespace GOTHIC_NAMESPACE
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
             LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));  
+            Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
             return;                  
         } else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
             // Zweig 2: Eindeutige Nahkampfwaffe (Schwert/Axt/etc)
