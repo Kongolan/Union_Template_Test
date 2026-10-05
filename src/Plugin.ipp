@@ -72,7 +72,8 @@ namespace GOTHIC_NAMESPACE
             int targetMinDamage = 5 + bonus;
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
-            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));  
+            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
+            // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
             Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
             return;                  
         } else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
@@ -83,7 +84,9 @@ namespace GOTHIC_NAMESPACE
             int targetMinDamage = 5 + bonus;
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
-            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));   
+            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
+            // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
+            Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
             return;
         } else {
             // Zweig 3: Fallback (Monsterangriffe, Faeuste, Magie oder unerkannte Waffen)
@@ -93,7 +96,10 @@ namespace GOTHIC_NAMESPACE
             int targetMinDamage = 5 + bonus;
             // Setzt NPC_MINIMAL_DAMAGE Wert
             sym->single_intdata = targetMinDamage;
-            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));   
+            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
+            // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
+            Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
+            return;
         }
 
         // 3. ORIGINALE BERECHNUNG AUSFUEHREN
