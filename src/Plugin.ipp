@@ -3,125 +3,101 @@
 namespace GOTHIC_NAMESPACE
 {
     // ==========================================================
-    // EIGENE LOGGING-FUNKTION (Fuer detaillierte zSpy-Logs im Hintergrund)
+    // EIGENE LOGGING-FUNKTION
     // ==========================================================
     void LogDebug(const zSTRING& text) {
         int debugMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DebugMode", 0);
         if (debugMode != 1) return;
+        
         zerr->Message("[MinDamage] " + text);
 
         // Debug-Ausgabe auf dem Bildschirm
         if (!ogame || !ogame->GetTextView()) return;
         
-        ogame->GetTextView()->Printwin("[MinDamage] " + text);
+            ogame->GetTextView()->Printwin("[MinDamage] " + text);
     }
 
     // ==========================================================
-    // 1. SCHADENSBERECHNUNG (OnDamage Root Hook)
+    // 1. SCHADENSBERECHNUNG (OnDamage_Hit Hook)
     // ==========================================================
     
-    // ZURUECK ZU ONDAMAGE: Hier liest die Engine das Symbol für die Ruestungsberechnung aus!
-    using TOnDamage = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
-    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
+    using TOnDamage_Hit = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
+    void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
     
-    auto Hook_Union_MinDamage_OnDamage = Union::CreateHook(
-        SIGNATURE_OF( static_cast<TOnDamage>(&oCNpc::OnDamage) ), 
-        &Union_MinDamage_OnDamage, 
+    auto Hook_Union_MinDamage_OnDamage_Hit = Union::CreateHook(
+        SIGNATURE_OF( static_cast<TOnDamage_Hit>(&oCNpc::OnDamage_Hit) ), 
+        &Union_MinDamage_OnDamage_Hit, 
         Union::HookType::Hook_Detours
     );
 
-    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
+    void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
         // INI-Werte auslesen
-        int isDynamic    = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DynamicMode", 1);
-        int settingValue = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "MinDamageValue", 0);
-        
+        int isDynamic = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DynamicMode", 1);
         int targetMinDamage = 5; // Standard-Fallback
-        zSTRING attackerName = "Niemand";
+        zSTRING calcDetails = "";
+        
+        zSTRING attackerName = desc.pNpcAttacker ? desc.pNpcAttacker->name[0] : zSTRING("Niemand");
         zSTRING targetName = _this ? _this->name[0] : zSTRING("Unbekannt");
 
-        // 2. DAEDALUS SYMBOL SETZEN (Exakt bevor die Engine die Ruestung abzieht)
-        zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
-        if (!sym) {
-            LogDebug("Fehler NPC_MINIMAL_DAMAGE kann nicht gelesen werden!");
-            return;
-        }
-
-        // 1. Lesen, was noch von vorher im Speicher steht
-        int valBefore = sym->single_intdata;
-
+        // Guard Clause 1: Festwert-Modus
         if (isDynamic != 1) {
-            // Modus ist nicht dynamisch -> Wir nutzen den fixen Wert aus der INI
-            targetMinDamage = settingValue;
-            sym->single_intdata = settingValue;
-            LogDebug("Festwert (INI): " + zSTRING(settingValue));
-            return;
+            targetMinDamage = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "MinDamageValue", 0);
+            calcDetails = "Festwert (INI)";
+        }
+        // Guard Clause 2: Kein Angreifer vorhanden (z.B. Fallschaden, Skripttod)
+        else if (!desc.pNpcAttacker) {
+            calcDetails = "Kein Angreifer (Basiswert 5)";
+        }
+        // Hauptlogik: Wir haben einen Angreifer und der Modus ist dynamisch
+        else {
+            int bonus = 0;
+            
+            // Waffenerkennung ueber Item-Flags
+            if (desc.pItemWeapon && ((desc.pItemWeapon->mainflag & ITM_CAT_FF) || (desc.pItemWeapon->mainflag & ITM_CAT_MUN))) {
+                int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
+                bonus = (dex / 10) - 1;
+                calcDetails = "Fernkampf Waffe (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
+            } 
+            else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
+                int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
+                bonus = (str / 10) - 1;
+                calcDetails = "Nahkampf Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
+            } 
+            else {
+                int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
+                bonus = (str / 10) - 1;
+                calcDetails = "Monster/Ohne Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
+            }
+            
+            targetMinDamage = 5 + bonus;
         }
 
-        // Logik & Berechnung unseres dynamischen Min-Schadens
-        if (!desc.pNpcAttacker) {
-            LogDebug("Kein Angreifer (Basiswert 5)");
-            sym->single_intdata = 5;
-            return;
+        // Sicherstellen, dass MinDamage nicht negativ wird
+        if (targetMinDamage < 0) {
+            targetMinDamage = 0;
+            calcDetails += " (korrigiert auf 0)";
         }
 
-        attackerName = desc.pNpcAttacker->name[0];
+        // ==========================================================
+        // AUSFUEHRUNG: DER CACHE-FIX (GRATUŚ)
+        // ==========================================================
         
-        // Direkte Auswertung der Waffe und sofortige Bonus-Berechnung
-        if (desc.pItemWeapon && ((desc.pItemWeapon->mainflag & ITM_CAT_FF) || (desc.pItemWeapon->mainflag & ITM_CAT_MUN))) {
-            // Zweig 1: Eindeutige Fernkampfwaffe ODER abgefeuertes Projektil
-            int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
-            int bonus = (dex / 10) - 1;
-            zSTRING calcDetails = "Fernkampf Waffe (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
-            int targetMinDamage = 5 + bonus;
-            // Setzt NPC_MINIMAL_DAMAGE Wert
-            sym->single_intdata = targetMinDamage;
-            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
-        } else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
-            // Zweig 2: Eindeutige Nahkampfwaffe (Schwert/Axt/etc)
-            int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
-            int bonus = (str / 10) - 1;
-            zSTRING calcDetails = "Nahkampf Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
-            int targetMinDamage = 5 + bonus;
-            // Setzt NPC_MINIMAL_DAMAGE Wert
-            sym->single_intdata = targetMinDamage;
-            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
-        } else {
-            // Zweig 3: Fallback (Monsterangriffe, Faeuste, Magie oder unerkannte Waffen)
-            int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
-            int bonus = (str / 10) - 1;
-            zSTRING calcDetails = "Monster/Ohne Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
-            int targetMinDamage = 5 + bonus;
-            // Setzt NPC_MINIMAL_DAMAGE Wert
-            sym->single_intdata = targetMinDamage;
-            LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
+        // Die G2A-Engine cacht NPC_MINIMAL_DAMAGE hart im Speicher.
+        // Wir ueberschreiben exakt diese Cache-Adresse direkt.
+        // zSwitch(G1, G1A, G2, G2A) verhindert Abstuerze auf anderen Gothic-Versionen.
+        int cacheAddress = zSwitch(0, 0, 0, 0x00AAC610);
+        if (cacheAddress != 0) {
+            int& min_damage_cache = *reinterpret_cast<int*>(cacheAddress);
+            min_damage_cache = targetMinDamage;
         }
+        LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " | Effektiver MinDmg = " + zSTRING(targetMinDamage));
 
-        // 3. ORIGINALE BERECHNUNG AUSFUEHREN
-        // Da wir OnDamage gehookt haben, liest die Engine JETZT unser Symbol aus und wendet den Floor an.
+        // Originale Engine-Berechnung ausfuehren. 
+        // Die Engine greift nun auf unseren erzwungenen Cache-Speicher zu.
+        Hook_Union_MinDamage_OnDamage_Hit(_this, vtable, desc);
 
-        // 3. Sofort wieder aus dem Speicher auslesen, um zu pruefen, ob der Schreibvorgang geklappt hat
-        int valAfter = sym->single_intdata;
-        
-        // 4. In die zSpy/Debug-Konsole loggen
-        LogDebug("RAM-CHECK | Vorher: " + zSTRING(valBefore) + 
-                    " | Wir wollten: " + zSTRING(targetMinDamage) + 
-                    " | Jetzt im RAM: " + zSTRING(valAfter));
-
-        Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
-
-           // 3. Sofort wieder aus dem Speicher auslesen, um zu pruefen, ob der Schreibvorgang geklappt hat
-        int valAfterAfter = sym->single_intdata;
-        
-        // 4. In die zSpy/Debug-Konsole loggen
-        LogDebug("RAM-CHECK | Vorher: " + zSTRING(valBefore) + 
-                    " | Wir wollten: " + zSTRING(targetMinDamage) + 
-                    " | Jetzt im RAM: " + zSTRING(valAfter) +
-                    " | Jetzt im RAM nach Damage: " + zSTRING(valAfterAfter));
-
-        // 4. SOFORTIGE BEREINIGUNG (Anti-Bleeding)
-        // Wir erzwingen IMMER eine saubere 5. Egal, was vorher im Savegame stand.
-        // if (sym) {
-        //     sym->single_intdata = 5;
-        // }
+        // HINWEIS: Ein Zuruecksetzen auf 5 ist nicht mehr noetig.
+        // Da dieser Hook bei absolut jedem Treffer ausloest, ist der Speicher 
+        // ohnehin immer exakt mit dem Wert gefuellt, der fuer den aktuellen Schlag berechnet wurde.
     }
 }
