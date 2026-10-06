@@ -14,23 +14,24 @@ namespace GOTHIC_NAMESPACE
         // Debug-Ausgabe auf dem Bildschirm
         if (!ogame || !ogame->GetTextView()) return;
         
-            ogame->GetTextView()->Printwin("[MinDamage] " + text);
+        ogame->GetTextView()->Printwin("[MinDamage] " + text);
     }
 
     // ==========================================================
-    // 1. SCHADENSBERECHNUNG (OnDamage_Hit Hook)
+    // 1. SCHADENSBERECHNUNG (OnDamage Root Hook)
     // ==========================================================
     
-    using TOnDamage_Hit = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
-    void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
+    // ZURUECK ZU ONDAMAGE: Wir greifen ein, bevor die Engine interne Caches baut!
+    using TOnDamage = void (oCNpc::*)(oCNpc::oSDamageDescriptor&);
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc);
     
-    auto Hook_Union_MinDamage_OnDamage_Hit = Union::CreateHook(
-        SIGNATURE_OF( static_cast<TOnDamage_Hit>(&oCNpc::OnDamage_Hit) ), 
-        &Union_MinDamage_OnDamage_Hit, 
+    auto Hook_Union_MinDamage_OnDamage = Union::CreateHook(
+        SIGNATURE_OF( static_cast<TOnDamage>(&oCNpc::OnDamage) ), 
+        &Union_MinDamage_OnDamage, 
         Union::HookType::Hook_Detours
     );
 
-    void __fastcall Union_MinDamage_OnDamage_Hit(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
+    void __fastcall Union_MinDamage_OnDamage(oCNpc* _this, void* vtable, oCNpc::oSDamageDescriptor& desc) {
         // INI-Werte auslesen
         int isDynamic = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "DynamicMode", 1);
         int targetMinDamage = 5; // Standard-Fallback
