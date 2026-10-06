@@ -53,17 +53,47 @@ namespace GOTHIC_NAMESPACE
         else {
             int bonus = 0;
             
-            // Waffenerkennung ueber Item-Flags
+            // 1. ZWEIG: FERNKAMPF (Bogen, Armbrust, Munition)
             if (desc.pItemWeapon && ((desc.pItemWeapon->mainflag & ITM_CAT_FF) || (desc.pItemWeapon->mainflag & ITM_CAT_MUN))) {
                 int dex = desc.pNpcAttacker->attribute[NPC_ATR_DEXTERITY];
                 bonus = (dex / 10) - 1;
                 calcDetails = "Fernkampf Waffe (DEX: " + zSTRING(dex) + ") -> 5 + " + zSTRING(bonus);
             } 
+            // 2. ZWEIG: NAHKAMPF (Schwert, Axt, etc.)
             else if (desc.pItemWeapon && (desc.pItemWeapon->mainflag & ITM_CAT_NF)) {
                 int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
                 bonus = (str / 10) - 1;
                 calcDetails = "Nahkampf Waffe (STR: " + zSTRING(str) + ") -> 5 + " + zSTRING(bonus);
             } 
+            // 3. ZWEIG: MAGIE (Zauber-ID vorhanden ODER Schadenstyp ist Feuer(8) / Magie(32))
+            else if (desc.nSpellID > 0 || (desc.enuModeDamage & 8) || (desc.enuModeDamage & 32)) {
+                int magicMode = zoptions->ReadInt("UNION_MINIMUM_DAMAGE", "MagicMode", 1);
+                
+                if (magicMode == 0) {
+                    // Vanilla: Prallt komplett ab (0 Schaden)
+                    bonus = -5; // Loescht den Basiswert von 5 aus
+                    calcDetails = "Magie (Vanilla) -> 0";
+                }
+                else if (magicMode == 1) {
+                    // Max Mana
+                    int maxMana = desc.pNpcAttacker->attribute[NPC_ATR_MANAMAX];
+                    bonus = (maxMana / 10) - 1;
+                    calcDetails = "Magie (Max Mana: " + zSTRING(maxMana) + ") -> 5 + " + zSTRING(bonus);
+                }
+                else if (magicMode == 2) {
+                    // Kinetisch (Aktuelles Mana)
+                    int curMana = desc.pNpcAttacker->attribute[NPC_ATR_MANA];
+                    bonus = (curMana / 10) - 1;
+                    calcDetails = "Magie (Aktuelles Mana: " + zSTRING(curMana) + ") -> 5 + " + zSTRING(bonus);
+                }
+                else { 
+                    // Modus 3: 10% des magischen Rohschadens
+                    int rawDmg = (int)desc.fDamageTotal;
+                    bonus = (rawDmg / 10) - 5; // Die -5 zieht den Standard-Basiswert ab, damit exakt 10% rauskommen
+                    calcDetails = "Magie (10% Rohschaden: " + zSTRING(rawDmg) + ") -> 5 + " + zSTRING(bonus);
+                }
+            }
+            // 4. ZWEIG: FALLBACK (Monster ohne Waffen, Faustkampf)
             else {
                 int str = desc.pNpcAttacker->attribute[NPC_ATR_STRENGTH];
                 bonus = (str / 10) - 1;
@@ -73,7 +103,7 @@ namespace GOTHIC_NAMESPACE
             targetMinDamage = 5 + bonus;
         }
 
-        // Sicherstellen, dass MinDamage nicht negativ wird
+        // Sicherstellen, dass MinDamage niemals negativ wird
         if (targetMinDamage < 0) {
             targetMinDamage = 0;
             calcDetails += " (korrigiert auf 0)";
@@ -93,7 +123,7 @@ namespace GOTHIC_NAMESPACE
         }
         LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
 
-        // Parallel das Daedalus-Symbol ueberschreiben (fuer G1, ersten Pfeil oder andere Mods ohne Cache)
+        // Parallel das Daedalus-Symbol ueberschreiben (fuer G1, den ersten Pfeil oder andere Mods ohne Cache)
         zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
         if (sym) {
             sym->single_intdata = targetMinDamage;

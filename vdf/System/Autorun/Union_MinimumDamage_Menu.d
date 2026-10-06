@@ -127,10 +127,31 @@ INSTANCE MenuItem_Opt_MinDamage_02_Val_Choice(C_MENU_ITEM_DEF)
     text[0]               = "0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20";
 };
 
-// ------ 3. Debug Modus ------
-INSTANCE MenuItem_Opt_MinDamage_03_Debug(C_MENU_ITEM)
+// ------ 3. Magie-Durchschlag ------
+INSTANCE MenuItem_Opt_MinDamage_03_Magic(C_MENU_ITEM)
 {
     CurrentMenuItem_PY = 3;
+    C_MENU_ITEM_TEXT_BASE();
+    posy += Menu_DY * CurrentMenuItem_PY + Text_DY;
+    
+    text[0] = "Magie-Durchschlag";
+    text[1] = "Vanilla (0), Max Mana, Aktuelles Mana, oder 10% Rohschaden";
+};
+
+INSTANCE MenuItem_Opt_MinDamage_03_Magic_Choice(C_MENU_ITEM_DEF)
+{
+    C_MENUITEM_CHOICE_BASE();
+    posy += Menu_DY * CurrentMenuItem_PY;
+    
+    onchgsetoption        = "MagicMode";
+    onchgsetoptionsection = "UNION_MINIMUM_DAMAGE";
+    text[0]               = "Vanilla|Max Mana|Akt. Mana|10% Rohschaden"; // Index 0=Vanilla, 1=MaxMana, 2=CurMana, 3=10%
+};
+
+// ------ 4. Debug Modus ------
+INSTANCE MenuItem_Opt_MinDamage_04_Debug(C_MENU_ITEM)
+{
+    CurrentMenuItem_PY = 4;
     C_MENU_ITEM_TEXT_BASE();
     posy += Menu_DY * CurrentMenuItem_PY + Text_DY;
     
@@ -138,7 +159,7 @@ INSTANCE MenuItem_Opt_MinDamage_03_Debug(C_MENU_ITEM)
     text[1] = "Gibt die Schadensberechnung live auf dem Bildschirm aus.";
 };
 
-INSTANCE MenuItem_Opt_MinDamage_03_Debug_Choice(C_MENU_ITEM_DEF)
+INSTANCE MenuItem_Opt_MinDamage_04_Debug_Choice(C_MENU_ITEM_DEF)
 {
     C_MENUITEM_CHOICE_BASE();
     posy += Menu_DY * CurrentMenuItem_PY;
