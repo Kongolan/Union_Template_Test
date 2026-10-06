@@ -91,7 +91,13 @@ namespace GOTHIC_NAMESPACE
             int& min_damage_cache = *reinterpret_cast<int*>(cacheAddress);
             min_damage_cache = targetMinDamage;
         }
-        LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " | Effektiver MinDmg = " + zSTRING(targetMinDamage));
+        LogDebug(attackerName + " -> " + targetName + " | " + calcDetails + " = " + zSTRING(targetMinDamage));
+
+        // Parallel das Daedalus-Symbol ueberschreiben (fuer G1, ersten Pfeil oder andere Mods ohne Cache)
+        zCPar_Symbol* sym = parser ? parser->GetSymbol("NPC_MINIMAL_DAMAGE") : nullptr;
+        if (sym) {
+            sym->single_intdata = targetMinDamage;
+        }
 
         // Originale Engine-Berechnung ausfuehren. 
         // Die Engine greift nun auf unseren erzwungenen Cache-Speicher zu.
