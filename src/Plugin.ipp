@@ -95,7 +95,7 @@ namespace GOTHIC_NAMESPACE
 
         // Originale Engine-Berechnung ausfuehren. 
         // Die Engine greift nun auf unseren erzwungenen Cache-Speicher zu.
-        Hook_Union_MinDamage_OnDamage_Hit(_this, vtable, desc);
+        Hook_Union_MinDamage_OnDamage(_this, vtable, desc);
 
         // HINWEIS: Ein Zuruecksetzen auf 5 ist nicht mehr noetig.
         // Da dieser Hook bei absolut jedem Treffer ausloest, ist der Speicher 
